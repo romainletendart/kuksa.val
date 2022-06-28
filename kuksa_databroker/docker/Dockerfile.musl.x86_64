@@ -1,0 +1,63 @@
+FROM rust:1.56 AS builder
+
+WORKDIR /build
+
+## FETCH AND BUILD DEPENDENCIES
+
+RUN rustup target add x86_64-unknown-linux-musl
+RUN rustup component add rustfmt
+
+# Copy real Cargo.toml(s)
+COPY Cargo.toml .
+COPY Cargo.lock .
+COPY kuksa_databroker/databroker/Cargo.toml     kuksa_databroker/databroker/
+COPY kuksa_databroker/databroker/build.rs       kuksa_databroker/databroker/
+COPY kuksa_databroker/databroker-api/Cargo.toml kuksa_databroker/databroker-api/
+COPY kuksa_databroker/databroker-cli/Cargo.toml      kuksa_databroker/databroker-cli/
+COPY kuksa_databroker/databroker-examples/Cargo.toml kuksa_databroker/databroker-examples/
+
+# Populate with dummy sources
+RUN mkdir -p kuksa_databroker/databroker/src && \
+    echo "fn main() {}" > kuksa_databroker/databroker/src/main.rs && \
+    touch kuksa_databroker/databroker/src/lib.rs
+
+RUN mkdir -p kuksa_databroker/databroker-api/src && \
+    touch kuksa_databroker/databroker-api/src/lib.rs
+
+RUN mkdir -p kuksa_databroker/databroker-cli/src && \
+    echo "fn main() {}" > kuksa_databroker/databroker-cli/src/main.rs
+
+RUN mkdir -p kuksa_databroker/databroker-examples/src && \
+    touch kuksa_databroker/databroker-examples/src/lib.rs
+
+# Build dependencies (by compiling dummy sources)
+ENV RUSTFLAGS='-C link-arg=-s'
+RUN cargo build --bin databroker --release \
+    --target x86_64-unknown-linux-musl
+
+RUN rm -r kuksa_databroker/*
+
+## BUILD
+
+# Copy the real sources (overwriting the fake ones)
+COPY . .
+
+# Build
+ENV RUSTFLAGS='-C link-arg=-s'
+RUN cargo build --bin databroker --release \
+    --target x86_64-unknown-linux-musl
+
+# Copy the binary to the root
+WORKDIR /
+RUN cp build/target/x86_64-unknown-linux-musl/release/databroker .
+
+## CREATE FINAL IMAGE
+FROM scratch
+COPY --from=builder databroker .
+
+ENV KUKSA_DATA_BROKER_ADDR=0.0.0.0
+ENV KUKSA_DATA_BROKER_PORT=55555
+
+EXPOSE $KUKSA_DATA_BROKER_PORT
+
+ENTRYPOINT [ "./databroker" ]
