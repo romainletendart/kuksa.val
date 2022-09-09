@@ -3,7 +3,7 @@ use std::{future::Future, time::Duration};
 use tonic::transport::Server;
 use tracing::info;
 
-use databroker_api::{kuksa, sdv};
+use databroker_proto::{kuksa, sdv};
 
 use crate::broker;
 
